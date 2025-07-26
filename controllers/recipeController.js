@@ -1,0 +1,55 @@
+const Recipe = require('../models/Recipe');
+const User = require('../models/User');
+
+exports.getAllRecipes = async (req, res) => {
+  const recipes = await Recipe.find().populate('createdBy', 'name');
+  res.json(recipes);
+};
+
+exports.createRecipe = async (req, res) => {
+  const { title, description, ingredients, steps, image } = req.body;
+  const recipe = await Recipe.create({
+    title, description, ingredients, steps, image, createdBy: req.user._id
+  });
+  res.status(201).json(recipe);
+};
+
+exports.getRecipeById = async (req, res) => {
+  const recipe = await Recipe.findById(req.params.id).populate('createdBy', 'name');
+  if (!recipe) return res.status(404).json({ message: 'Recipe not found' });
+  res.json(recipe);
+};
+
+exports.updateRecipe = async (req, res) => {
+  const recipe = await Recipe.findById(req.params.id);
+  if (!recipe) return res.status(404).json({ message: 'Recipe not found' });
+  if (recipe.createdBy.toString() !== req.user._id.toString())
+    return res.status(403).json({ message: 'Not authorized' });
+
+  Object.assign(recipe, req.body);
+  await recipe.save();
+  res.json(recipe);
+};
+
+exports.deleteRecipe = async (req, res) => {
+  try {
+  const recipe = await Recipe.findById(req.params.id);
+  if (!recipe) return res.status(404).json({ message: 'Recipe not found' });
+    
+    // Check if the user is the creator of the recipe
+    if (recipe.createdBy.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'You can only delete your own recipes' });
+    }
+    
+    // Remove recipe from user's uploadedRecipes array
+    await User.findByIdAndUpdate(req.user._id, {
+      $pull: { uploadedRecipes: recipe._id }
+    });
+    
+    // Delete the recipe
+    await Recipe.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Recipe deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
