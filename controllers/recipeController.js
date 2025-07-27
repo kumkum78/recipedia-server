@@ -7,11 +7,22 @@ exports.getAllRecipes = async (req, res) => {
 };
 
 exports.createRecipe = async (req, res) => {
+  try {
   const { title, description, ingredients, steps, image } = req.body;
   const recipe = await Recipe.create({
     title, description, ingredients, steps, image, createdBy: req.user._id
   });
+    
+    // Add recipe to user's uploadedRecipes array
+    await User.findByIdAndUpdate(req.user._id, {
+      $push: { uploadedRecipes: recipe._id }
+    });
+    
   res.status(201).json(recipe);
+  } catch (error) {
+    console.error('Create recipe error:', error);
+    res.status(500).json({ message: "Failed to create recipe", error: error.message });
+  }
 };
 
 exports.getRecipeById = async (req, res) => {

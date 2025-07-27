@@ -8,6 +8,10 @@ exports.getProfile = async (req, res) => {
       .populate('uploadedRecipes')
       .populate('rooms');
     
+    console.log("User found:", user.name);
+    console.log("Uploaded recipes count:", user.uploadedRecipes ? user.uploadedRecipes.length : 0);
+    console.log("Uploaded recipes:", user.uploadedRecipes);
+    
     // Handle mixed types for liked and bookmarked recipes
     const likedRecipes = user.likedRecipes || [];
     const bookmarkedRecipes = user.bookmarkedRecipes || [];
