@@ -9,8 +9,11 @@ exports.suggestDishes = async (req, res) => {
     if (!meals) {
       return res.status(404).json({ message: `No dishes found for cuisine: ${cuisine}` });
     }
-    // Return just the meal names (limit to 5 for brevity)
-    const dishes = meals.slice(0, 5).map(meal => meal.strMeal);
+    
+    // Randomly shuffle the meals array and take first 5
+    const shuffledMeals = [...meals].sort(() => Math.random() - 0.5);
+    const dishes = shuffledMeals.slice(0, 5).map(meal => meal.strMeal);
+    
     res.json({ dishes });
   } catch (err) {
     res.status(500).json({ message: 'Recipe suggestion failed', error: err.message });

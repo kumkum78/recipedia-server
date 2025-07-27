@@ -30,12 +30,13 @@ exports.createRoom = async (req, res) => {
 exports.joinRoom = async (req, res) => {
   const room = await Room.findById(req.params.id);
   if (!room) return res.status(404).json({ message: 'Room not found' });
-  if (!room.members.includes(req.user._id)) {
-    room.members.push(req.user._id);
-    await room.save();
-    req.user.rooms.push(room._id);
-    await req.user.save();
+  if (room.members.includes(req.user._id)) {
+    return res.status(400).json({ message: 'You are already a member of this room' });
   }
+  room.members.push(req.user._id);
+  await room.save();
+  req.user.rooms.push(room._id);
+  await req.user.save();
   res.json(room);
 };
 

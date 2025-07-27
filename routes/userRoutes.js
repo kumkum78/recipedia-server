@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/authMiddleware');
-const { getProfile, likeRecipe, bookmarkRecipe, unlikeRecipe, unbookmarkRecipe } = require('../controllers/userController');
+const userController = require('../controllers/userController');
 
-router.get('/profile', auth, getProfile);
-router.post('/like/:id', auth, likeRecipe);
-router.delete('/like/:id', auth, unlikeRecipe);
-router.post('/bookmark/:id', auth, bookmarkRecipe);
-router.delete('/bookmark/:id', auth, unbookmarkRecipe);
+router.get('/profile', auth, userController.getProfile);
+router.post('/like/:id', auth, userController.likeRecipe);
+router.delete('/like/:id', auth, userController.unlikeRecipe);
+router.post('/bookmark/:id', auth, userController.bookmarkRecipe);
+router.delete('/bookmark/:id', auth, userController.unbookmarkRecipe);
+router.post('/add-video-data', auth, userController.addVideoData);
 
 module.exports = router;

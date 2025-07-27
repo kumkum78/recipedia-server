@@ -20,6 +20,8 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
+
+
 // Import routes
 const authRoutes = require('./routes/authRoutes');
 const recipeRoutes = require('./routes/recipeRoutes');
@@ -33,6 +35,9 @@ app.use('/api/recipes', recipeRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/rooms', roomRoutes);
 app.use('/api/ai', aiRoutes);
+
+// Serve static files from uploads directory
+app.use('/uploads', express.static('uploads'));
 
 app.get('/', (req, res) => {
   res.send('API is running...');

@@ -7,7 +7,8 @@ const userSchema = new mongoose.Schema({
   likedRecipes: [{ type: mongoose.Schema.Types.Mixed }], // Allow both ObjectIds and strings
   bookmarkedRecipes: [{ type: mongoose.Schema.Types.Mixed }], // Allow both ObjectIds and strings
   uploadedRecipes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Recipe' }],
-  rooms: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Room' }]
+  rooms: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Room' }],
+  videoRecipeData: { type: mongoose.Schema.Types.Mixed, default: {} } // Store video recipe data
 });
 
 module.exports = mongoose.model('User', userSchema);

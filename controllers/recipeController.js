@@ -25,6 +25,8 @@ exports.createRecipe = async (req, res) => {
   }
 };
 
+
+
 exports.getRecipeById = async (req, res) => {
   const recipe = await Recipe.findById(req.params.id).populate('createdBy', 'name');
   if (!recipe) return res.status(404).json({ message: 'Recipe not found' });
@@ -62,5 +64,25 @@ exports.deleteRecipe = async (req, res) => {
     res.json({ message: 'Recipe deleted successfully' });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+};
+
+// Image upload endpoint
+exports.uploadImage = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    // Return the file path
+    const imageUrl = `/uploads/${req.file.filename}`;
+    res.json({ 
+      message: 'Image uploaded successfully',
+      imageUrl: imageUrl,
+      filename: req.file.filename
+    });
+  } catch (error) {
+    console.error('Image upload error:', error);
+    res.status(500).json({ message: "Failed to upload image", error: error.message });
   }
 };
