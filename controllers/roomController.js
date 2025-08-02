@@ -1,13 +1,20 @@
 const Room = require('../models/Room');
 const MealSuggestion = require('../models/MealSuggestion');
 const Invite = require('../models/Invite');
+const User = require('../models/User');
 const crypto = require('crypto');
 
 exports.getRoom = async (req, res) => {
   try {
     const room = await Room.findById(req.params.id)
       .populate('members', 'name email')
-      .populate('recipes', 'title description');
+      .populate({
+        path: 'recipes',
+        populate: {
+          path: 'createdBy',
+          select: 'name'
+        }
+      });
     
     if (!room) {
       return res.status(404).json({ message: 'Room not found' });
@@ -19,25 +26,124 @@ exports.getRoom = async (req, res) => {
   }
 };
 
+// Get all rooms for the current user
+exports.getUserRooms = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).populate('rooms');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Populate room details
+    const populatedRooms = await Room.find({ _id: { $in: user.rooms } })
+      .populate('members', 'name email')
+      .populate({
+        path: 'recipes',
+        populate: {
+          path: 'createdBy',
+          select: 'name'
+        }
+      })
+      .sort({ createdAt: -1 });
+    
+    res.json(populatedRooms);
+  } catch (error) {
+    console.error('Get user rooms error:', error);
+    res.status(500).json({ message: 'Failed to fetch rooms', error: error.message });
+  }
+};
+
 exports.createRoom = async (req, res) => {
-  const { name } = req.body;
-  const room = await Room.create({ name, members: [req.user._id] });
-  req.user.rooms.push(room._id);
-  await req.user.save();
-  res.status(201).json(room);
+  try {
+    const { name } = req.body;
+    
+    if (!name || name.trim() === '') {
+      return res.status(400).json({ message: 'Room name is required' });
+    }
+    
+    // Fetch the user from database to ensure we have the latest data
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Create the room
+    const room = await Room.create({ 
+      name: name.trim(), 
+      members: [user._id] 
+    });
+    
+    // Add room to user's rooms
+    user.rooms.push(room._id);
+    await user.save();
+    
+    // Return the created room with populated data
+    const populatedRoom = await Room.findById(room._id).populate('members', 'name email');
+    
+    res.status(201).json(populatedRoom);
+  } catch (error) {
+    console.error('Create room error:', error);
+    res.status(500).json({ message: 'Failed to create room', error: error.message });
+  }
 };
 
 exports.joinRoom = async (req, res) => {
-  const room = await Room.findById(req.params.id);
-  if (!room) return res.status(404).json({ message: 'Room not found' });
-  if (room.members.includes(req.user._id)) {
-    return res.status(400).json({ message: 'You are already a member of this room' });
+  try {
+    const roomId = req.params.id;
+    console.log('Attempting to join room with ID:', roomId);
+    
+    // Validate room ID format
+    if (!roomId || roomId.length !== 24) {
+      console.log('Invalid room ID format. Expected 24 characters, got:', roomId?.length || 0);
+      return res.status(400).json({ 
+        message: 'Invalid room ID format. Room ID must be 24 characters long.',
+        providedId: roomId,
+        expectedLength: 24,
+        actualLength: roomId?.length || 0
+      });
+    }
+    
+    const room = await Room.findById(roomId);
+    if (!room) {
+      console.log('Room not found with ID:', roomId);
+      return res.status(404).json({ message: 'Room not found' });
+    }
+    
+    console.log('Room found:', room.name, 'with ID:', room._id);
+    
+    // Fetch the user from database to ensure we have the latest data
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      console.log('User not found with ID:', req.user.id);
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    console.log('User found:', user.name, 'with ID:', user._id);
+    
+    if (room.members.includes(user._id)) {
+      console.log('User is already a member of this room');
+      return res.status(400).json({ message: 'You are already a member of this room' });
+    }
+    
+    // Add user to room
+    room.members.push(user._id);
+    await room.save();
+    console.log('User added to room members');
+    
+    // Add room to user's rooms
+    user.rooms.push(room._id);
+    await user.save();
+    console.log('Room added to user\'s rooms');
+    
+    // Return the updated room with populated data
+    const populatedRoom = await Room.findById(room._id).populate('members', 'name email');
+    
+    console.log('Successfully joined room:', room.name);
+    res.json(populatedRoom);
+  } catch (error) {
+    console.error('Join room error:', error);
+    res.status(500).json({ message: 'Failed to join room', error: error.message });
   }
-  room.members.push(req.user._id);
-  await room.save();
-  req.user.rooms.push(room._id);
-  await req.user.save();
-  res.json(room);
 };
 
 exports.getRoomSuggestions = async (req, res) => {
@@ -64,17 +170,23 @@ exports.getRoomSuggestions = async (req, res) => {
 
 exports.addMealSuggestion = async (req, res) => {
   try {
-  const { id } = req.params;
+    const { id } = req.params;
     const { meal, dish, date } = req.body; // Frontend sends 'meal' not 'mealType'
     const suggestionDate = date || new Date().toISOString().slice(0, 10);
     
-    let suggestion = await MealSuggestion.findOne({ room: id, date: suggestionDate });
-  if (!suggestion) {
-      suggestion = await MealSuggestion.create({ room: id, date: suggestionDate });
-  }
+    // Fetch the user from database to ensure we have the latest data
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
     
-    suggestion[meal].push({ user: req.user._id, dish });
-  await suggestion.save();
+    let suggestion = await MealSuggestion.findOne({ room: id, date: suggestionDate });
+    if (!suggestion) {
+      suggestion = await MealSuggestion.create({ room: id, date: suggestionDate });
+    }
+    
+    suggestion[meal].push({ user: user._id, dish });
+    await suggestion.save();
     
     // Populate user info before sending response
     await suggestion.populate('breakfast.user', 'name');
@@ -82,8 +194,9 @@ exports.addMealSuggestion = async (req, res) => {
     await suggestion.populate('snacks.user', 'name');
     await suggestion.populate('dinner.user', 'name');
     
-  res.json(suggestion);
+    res.json(suggestion);
   } catch (error) {
+    console.error('Add meal suggestion error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -96,6 +209,13 @@ const generateInviteCode = () => {
 exports.createInvite = async (req, res) => {
   try {
     const { id } = req.params;
+    
+    // Fetch the user from database to ensure we have the latest data
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
     const room = await Room.findById(id);
     
     if (!room) {
@@ -103,7 +223,7 @@ exports.createInvite = async (req, res) => {
     }
     
     // Check if user is a member of the room
-    if (!room.members.includes(req.user._id)) {
+    if (!room.members.includes(user._id)) {
       return res.status(403).json({ message: 'You must be a member of the room to create invites' });
     }
     
@@ -121,7 +241,7 @@ exports.createInvite = async (req, res) => {
     
     const newInvite = await Invite.create({
       room: id,
-      createdBy: req.user._id,
+      createdBy: user._id,
       inviteCode,
       expiresAt
     });
@@ -133,6 +253,7 @@ exports.createInvite = async (req, res) => {
       inviteUrl: `${req.protocol}://${req.get('host')}/rooms/join/${inviteCode}`
     });
   } catch (error) {
+    console.error('Create invite error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -159,22 +280,28 @@ exports.joinByInvite = async (req, res) => {
     
     const room = invite.room;
     
+    // Fetch the user from database to ensure we have the latest data
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
     // Check if user is already a member
-    if (room.members.includes(req.user._id)) {
+    if (room.members.includes(user._id)) {
       return res.status(400).json({ message: 'You are already a member of this room' });
     }
     
     // Add user to room
-    room.members.push(req.user._id);
+    room.members.push(user._id);
     await room.save();
     
     // Add room to user's rooms
-    req.user.rooms.push(room._id);
-    await req.user.save();
+    user.rooms.push(room._id);
+    await user.save();
     
     // Mark invite as used
     invite.used = true;
-    invite.usedBy = req.user._id;
+    invite.usedBy = user._id;
     await invite.save();
     
     res.json({ 
@@ -185,6 +312,7 @@ exports.joinByInvite = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('Join by invite error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -192,6 +320,13 @@ exports.joinByInvite = async (req, res) => {
 exports.getRoomInvites = async (req, res) => {
   try {
     const { id } = req.params;
+    
+    // Fetch the user from database to ensure we have the latest data
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
     const room = await Room.findById(id);
     
     if (!room) {
@@ -199,7 +334,7 @@ exports.getRoomInvites = async (req, res) => {
     }
     
     // Check if user is a member of the room
-    if (!room.members.includes(req.user._id)) {
+    if (!room.members.includes(user._id)) {
       return res.status(403).json({ message: 'You must be a member of the room to view invites' });
     }
     
@@ -210,6 +345,7 @@ exports.getRoomInvites = async (req, res) => {
     
     res.json(invites);
   } catch (error) {
+    console.error('Get room invites error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -219,13 +355,19 @@ exports.addRecipeToRoom = async (req, res) => {
     const { id } = req.params;
     const { title, description, ingredients, steps, image } = req.body;
     
+    // Fetch the user from database to ensure we have the latest data
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
     const room = await Room.findById(id);
     if (!room) {
       return res.status(404).json({ message: 'Room not found' });
     }
     
     // Check if user is a member of the room
-    if (!room.members.includes(req.user._id)) {
+    if (!room.members.includes(user._id)) {
       return res.status(403).json({ message: 'You must be a member of the room to add recipes' });
     }
     
@@ -237,7 +379,7 @@ exports.addRecipeToRoom = async (req, res) => {
       ingredients,
       steps,
       image,
-      createdBy: req.user._id,
+      createdBy: user._id,
       room: id
     });
     
@@ -246,8 +388,8 @@ exports.addRecipeToRoom = async (req, res) => {
     await room.save();
     
     // Add recipe to user's uploaded recipes
-    req.user.uploadedRecipes.push(recipe._id);
-    await req.user.save();
+    user.uploadedRecipes.push(recipe._id);
+    await user.save();
     
     // Emit socket event for real-time update
     const io = req.app.get('io');
@@ -260,6 +402,7 @@ exports.addRecipeToRoom = async (req, res) => {
     
     res.status(201).json(recipe);
   } catch (error) {
+    console.error('Add recipe to room error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -269,18 +412,24 @@ exports.removeMemberFromRoom = async (req, res) => {
     const { id } = req.params;
     const { memberId } = req.body;
     
+    // Fetch the user from database to ensure we have the latest data
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
     const room = await Room.findById(id);
     if (!room) {
       return res.status(404).json({ message: 'Room not found' });
     }
     
     // Check if user is the room creator (admin)
-    if (room.members[0].toString() !== req.user._id.toString()) {
+    if (room.members[0].toString() !== user._id.toString()) {
       return res.status(403).json({ message: 'Only the room creator can remove members' });
     }
     
     // Check if trying to remove the creator
-    if (memberId === req.user._id.toString()) {
+    if (memberId === user._id.toString()) {
       return res.status(400).json({ message: 'Cannot remove yourself from the room' });
     }
     
@@ -289,13 +438,13 @@ exports.removeMemberFromRoom = async (req, res) => {
     await room.save();
     
     // Remove room from member's rooms
-    const User = require('../models/User');
     await User.findByIdAndUpdate(memberId, {
       $pull: { rooms: id }
     });
     
     res.json({ message: 'Member removed successfully' });
   } catch (error) {
+    console.error('Remove member from room error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

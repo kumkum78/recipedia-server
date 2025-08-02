@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/authMiddleware');
-const { createRoom, joinRoom, getRoom, getRoomSuggestions, addMealSuggestion, createInvite, joinByInvite, getRoomInvites, addRecipeToRoom, removeMemberFromRoom } = require('../controllers/roomController');
+const { createRoom, joinRoom, getRoom, getRoomSuggestions, addMealSuggestion, createInvite, joinByInvite, getRoomInvites, addRecipeToRoom, removeMemberFromRoom, getUserRooms } = require('../controllers/roomController');
 
+router.get('/', auth, getUserRooms);
 router.post('/', auth, createRoom);
 router.get('/:id', auth, getRoom);
 router.post('/join/:id', auth, joinRoom);
